@@ -1,5 +1,3 @@
-#![feature(custom_attribute)]
-
 extern crate quote;
 extern crate syn;
 #[macro_use]
@@ -8,7 +6,7 @@ extern crate proc_macro2;
 
 use proc_macro2::TokenStream;
 use syn::{AttrStyle, Attribute, Ident, Meta, NestedMeta, Type};
-use synstructure::{BindingInfo, Structure};
+use synstructure::{BindStyle, BindingInfo, Structure};
 
 decl_derive!([EnumAccess, attributes(enum_get, enum_get_some, enum_iter, enum_alias)] => impl_enum_accessor);
 fn impl_enum_accessor(mut s: Structure) -> TokenStream {
@@ -18,6 +16,9 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
             .unwrap_or_else(|| Ident::new(&format!("binding{}", i), proc_macro2::Span::call_site()))
     });
 
+    let mut s_mut = s.clone();
+    s_mut.bind_with(|_| BindStyle::RefMut);
+
     let accessors = get_attribute_list(&s.ast().attrs);
 
     let body = accessors.iter().flat_map(|(kind, ident)| {
@@ -26,37 +27,67 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
 
         if kind == "enum_get" {
             let body = impl_enum_get(&s, ident);
-            let accessor = Ident::new(&format!("get_{}", ident), proc_macro2::Span::call_site());
+            let get = Ident::new(&format!("get_{}", ident), proc_macro2::Span::call_site());
+
+            let body_mut = impl_enum_get(&s_mut, ident);
+            let get_mut = Ident::new(
+                &format!("get_mut_{}", ident),
+                proc_macro2::Span::call_site(),
+            );
 
             Some(quote!{
+                #[allow(unused_variables, dead_code)]
                 impl #sident {
-                    #[allow(unused_variables)]
-                    pub fn #accessor (&self) -> &#ty {
+                    pub fn #get (&self) -> &#ty {
                         match *self { #body }
+                    }
+
+                    pub fn #get_mut (&mut self) -> &mut #ty {
+                        match *self { #body_mut }
                     }
                 }
             })
         } else if kind == "enum_get_some" {
             let body = impl_enum_get_some(&s, ident);
-            let accessor = Ident::new(&format!("get_{}", ident), proc_macro2::Span::call_site());
+            let get = Ident::new(&format!("get_{}", ident), proc_macro2::Span::call_site());
+
+            let body_mut = impl_enum_get_some(&s_mut, ident);
+            let get_mut = Ident::new(
+                &format!("get_mut_{}", ident),
+                proc_macro2::Span::call_site(),
+            );
 
             Some(quote!{
+                #[allow(unused_variables, dead_code)]
                 impl #sident {
-                    #[allow(unused_variables)]
-                    pub fn #accessor (&self) -> Option<&#ty> {
+                    pub fn #get (&self) -> Option<&#ty> {
                         match *self { #body }
+                    }
+
+                    pub fn #get_mut (&mut self) -> Option<&mut #ty> {
+                        match *self { #body_mut }
                     }
                 }
             })
         } else if kind == "enum_iter" {
             let body = impl_enum_iter(&s, ident);
-            let accessor = Ident::new(&format!("iter_{}s", ident), proc_macro2::Span::call_site());
+            let iter = Ident::new(&format!("iter_{}s", ident), proc_macro2::Span::call_site());
+
+            let body_mut = impl_enum_iter(&s_mut, ident);
+            let iter_mut = Ident::new(
+                &format!("iter_mut_{}s", ident),
+                proc_macro2::Span::call_site(),
+            );
 
             Some(quote!{
+                #[allow(unused_variables, dead_code)]
                 impl #sident {
-                    #[allow(unused_variables)]
-                    pub fn #accessor (&self) -> Vec<&#ty> {
+                    pub fn #iter (&self) -> Vec<&#ty> {
                         match *self { #body }
+                    }
+
+                    pub fn #iter_mut (&mut self) -> Vec<&mut #ty> {
+                        match *self { #body_mut }
                     }
                 }
             })
