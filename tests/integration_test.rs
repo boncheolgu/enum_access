@@ -20,6 +20,8 @@ enum A {
         lhs: i32,
         #[enum_alias(input)]
         rhs: i32,
+        #[enum_ignore]
+        input: i32,
     },
     Variant4(
         #[enum_alias(index)] u32,
@@ -59,6 +61,7 @@ fn it_works() {
         name: "var3".to_string(),
         lhs: 1,
         rhs: 2,
+        input: 3,
     };
 
     assert_eq!(v.get_name(), &"var3".to_string());

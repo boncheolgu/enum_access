@@ -8,7 +8,8 @@ use proc_macro2::TokenStream;
 use syn::{AttrStyle, Attribute, Ident, Meta, NestedMeta, Type};
 use synstructure::{BindStyle, BindingInfo, Structure};
 
-decl_derive!([EnumAccess, attributes(enum_get, enum_get_some, enum_iter, enum_alias)] => impl_enum_accessor);
+decl_derive!([EnumAccess, attributes(enum_get, enum_get_some, enum_iter, enum_alias, enum_ignore)]
+             => impl_enum_accessor);
 fn impl_enum_accessor(mut s: Structure) -> TokenStream {
     s.binding_name(|bi, i| {
         bi.ident
@@ -100,11 +101,12 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
 }
 
 fn ident_of(bi: &BindingInfo, ident: &Ident) -> bool {
-    &bi.binding == ident || {
-        get_attribute_list(&bi.ast().attrs)
-            .iter()
-            .any(|(k, v)| k == "enum_alias" && v == ident)
+    if contains_word(&bi.ast().attrs, "enum_ignore") {
+        return false;
     }
+
+    let attrs = get_attribute_list(&bi.ast().attrs);
+    &bi.binding == ident || { attrs.iter().any(|(k, v)| k == "enum_alias" && v == ident) }
 }
 
 fn ident_type<'a>(s: &'a Structure, ident: &Ident) -> &'a Type {
@@ -190,6 +192,20 @@ fn impl_enum_iter(s: &Structure, ident: &Ident) -> TokenStream {
 
         quote!{ vec![#(#bindings,)*] }
     })
+}
+
+fn contains_word(attrs: &[Attribute], word: &str) -> bool {
+    for attr in attrs {
+        if attr.style == AttrStyle::Outer {
+            if let Some(meta) = attr.interpret_meta() {
+                match meta {
+                    Meta::Word(ref id) if id == word => return true,
+                    _ => continue,
+                }
+            }
+        }
+    }
+    return false;
 }
 
 fn get_attribute_list(attrs: &[Attribute]) -> Vec<(Ident, Ident)> {
