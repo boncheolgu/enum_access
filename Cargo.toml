@@ -1,11 +1,11 @@
 [package]
 name = "enum_access"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Boncheol Gu <boncheol.gu@gmail.com>"]
 
 description = "Custom derive for automatically generating the accessor methods for Enums"
 keywords = ["enum", "macros", "proc-macros", "accessor"]
-license = "MIT"
+license = "MIT/Apache-2.0"
 repository = "https://github.com/boncheolgu/enum_access"
 readme = "README.md"
 
