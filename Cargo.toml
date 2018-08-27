@@ -3,6 +3,12 @@ name = "enum_access"
 version = "0.1.0"
 authors = ["Boncheol Gu <boncheol.gu@gmail.com>"]
 
+description = "Custom derive for automatically generating the accessor methods for Enums"
+keywords = ["enum", "macros", "proc-macros", "accessor"]
+license = "MIT"
+repository = "https://github.com/boncheolgu/enum_access"
+readme = "README.md"
+
 [lib]
 proc-macro = true
 
