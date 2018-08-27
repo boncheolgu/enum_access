@@ -1,0 +1,13 @@
+sudo: false
+language: rust
+rust:
+  - stable
+  - beta
+  - nightly
+
+env:
+  global:
+    - RUST_BACKTRACE=1
+
+script:
+  - cargo test --verbose
