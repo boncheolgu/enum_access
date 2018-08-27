@@ -1,40 +1,43 @@
 extern crate quote;
+#[allow(unused_imports)]
+#[macro_use]
 extern crate syn;
 #[macro_use]
 extern crate synstructure;
 extern crate proc_macro2;
 
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use syn::{AttrStyle, Attribute, Ident, Meta, NestedMeta, Type};
 use synstructure::{BindStyle, BindingInfo, Structure};
 
-decl_derive!([EnumAccess, attributes(enum_get, enum_get_some, enum_iter, enum_alias, enum_ignore)]
-             => impl_enum_accessor);
+macro_rules! ident {
+    ($id:expr) => {
+        Ident::new($id, Span::call_site())
+    };
+    ($fmt:expr, $($args:tt)+) => {
+        Ident::new(&format!($fmt, $($args)*), Span::call_site())
+    };
+}
+
+decl_derive!([EnumAccess, attributes(enum_alias, enum_ignore, enum_access)] => impl_enum_accessor);
 fn impl_enum_accessor(mut s: Structure) -> TokenStream {
-    s.binding_name(|bi, i| {
-        bi.ident
-            .clone()
-            .unwrap_or_else(|| Ident::new(&format!("binding{}", i), proc_macro2::Span::call_site()))
-    });
+    s.binding_name(|bi, i| bi.ident.clone().unwrap_or_else(|| ident!("binding{}", i)));
 
     let mut s_mut = s.clone();
     s_mut.bind_with(|_| BindStyle::RefMut);
 
-    let accessors = get_attribute_list(&s.ast().attrs);
+    let accessors = get_accessor_list(&s.ast().attrs);
 
     let body = accessors.iter().flat_map(|(kind, ident)| {
         let sident = &s.ast().ident;
         let ty = ident_type(&s, ident);
 
-        if kind == "enum_get" {
+        if kind == "get" {
             let body = impl_enum_get(&s, ident);
-            let get = Ident::new(&format!("get_{}", ident), proc_macro2::Span::call_site());
+            let get = ident!("get_{}", ident);
 
             let body_mut = impl_enum_get(&s_mut, ident);
-            let get_mut = Ident::new(
-                &format!("get_mut_{}", ident),
-                proc_macro2::Span::call_site(),
-            );
+            let get_mut = ident!("get_mut_{}", ident);
 
             Some(quote!{
                 #[allow(unused_variables, dead_code)]
@@ -48,15 +51,12 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
                     }
                 }
             })
-        } else if kind == "enum_get_some" {
+        } else if kind == "get_some" {
             let body = impl_enum_get_some(&s, ident);
-            let get = Ident::new(&format!("get_{}", ident), proc_macro2::Span::call_site());
+            let get = ident!("get_{}", ident);
 
             let body_mut = impl_enum_get_some(&s_mut, ident);
-            let get_mut = Ident::new(
-                &format!("get_mut_{}", ident),
-                proc_macro2::Span::call_site(),
-            );
+            let get_mut = ident!("get_mut_{}", ident);
 
             Some(quote!{
                 #[allow(unused_variables, dead_code)]
@@ -70,15 +70,12 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
                     }
                 }
             })
-        } else if kind == "enum_iter" {
+        } else if kind == "iter" {
             let body = impl_enum_iter(&s, ident);
-            let iter = Ident::new(&format!("iter_{}s", ident), proc_macro2::Span::call_site());
+            let iter = ident!("iter_{}s", ident);
 
             let body_mut = impl_enum_iter(&s_mut, ident);
-            let iter_mut = Ident::new(
-                &format!("iter_mut_{}s", ident),
-                proc_macro2::Span::call_site(),
-            );
+            let iter_mut = ident!("iter_mut_{}s", ident);
 
             Some(quote!{
                 #[allow(unused_variables, dead_code)]
@@ -105,8 +102,11 @@ fn ident_of(bi: &BindingInfo, ident: &Ident) -> bool {
         return false;
     }
 
-    let attrs = get_attribute_list(&bi.ast().attrs);
-    &bi.binding == ident || { attrs.iter().any(|(k, v)| k == "enum_alias" && v == ident) }
+    &bi.binding == ident || {
+        get_attribute_list(&bi.ast().attrs)
+            .iter()
+            .any(|(k, v)| k == "enum_alias" && v == ident)
+    }
 }
 
 fn ident_type<'a>(s: &'a Structure, ident: &Ident) -> &'a Type {
@@ -234,4 +234,68 @@ fn get_attribute_list(attrs: &[Attribute]) -> Vec<(Ident, Ident)> {
     }
 
     result
+}
+
+fn get_accessor_list(attrs: &[Attribute]) -> Vec<(Ident, Ident)> {
+    let mut result = Vec::new();
+
+    for attr in attrs {
+        if attr.style != AttrStyle::Outer {
+            continue;
+        }
+
+        if let Some(meta) = attr.interpret_meta() {
+            if meta.name() != "enum_access" {
+                continue;
+            }
+
+            match meta {
+                Meta::List(meta_list) => {
+                    for meta in &meta_list.nested {
+                        match meta {
+                            NestedMeta::Meta(Meta::List(meta_list)) => {
+                                for meta in &meta_list.nested {
+                                    match *meta {
+                                        NestedMeta::Meta(Meta::Word(ref ident)) => {
+                                            result.push((meta_list.ident.clone(), ident.clone()));
+                                        }
+                                        _ => continue,
+                                    }
+                                }
+                            }
+                            _ => continue,
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    result
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use syn::DeriveInput;
+
+    #[test]
+    fn it_works() {
+        let s: DeriveInput = parse_quote!{
+            #[enum_access(get(name, address), get_some(index), iter(input))]
+            enum A {
+            }
+        };
+        assert_eq!(
+            get_accessor_list(&s.attrs),
+            vec![
+                (ident!("get"), ident!("name")),
+                (ident!("get"), ident!("address")),
+                (ident!("get_some"), ident!("index")),
+                (ident!("iter"), ident!("input")),
+            ]
+        );
+    }
 }

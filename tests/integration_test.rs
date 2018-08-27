@@ -2,9 +2,7 @@
 extern crate enum_access;
 
 #[derive(EnumAccess)]
-#[enum_get(name)]
-#[enum_get_some(index)]
-#[enum_iter(input)]
+#[enum_access(get(name), get_some(index, value), iter(input))]
 enum A {
     Variant1 {
         name: String,
@@ -13,10 +11,11 @@ enum A {
     Variant2 {
         index: u32,
         name: String,
+        value: i32,
     },
     Variant3 {
         name: String,
-        #[enum_alias(input)]
+        #[enum_alias(input, value)]
         lhs: i32,
         #[enum_alias(input)]
         rhs: i32,
@@ -40,6 +39,7 @@ fn it_works() {
 
     assert_eq!(v.get_name(), &"var1".to_string());
     assert_eq!(v.get_index(), None);
+    assert_eq!(v.get_value(), None);
     assert_eq!(v.iter_inputs(), vec![&9]);
 
     *v.get_mut_name() = "var1'".to_string();
@@ -48,10 +48,12 @@ fn it_works() {
     let mut v = A::Variant2 {
         index: 0,
         name: "var2".to_string(),
+        value: 23,
     };
 
     assert_eq!(v.get_name(), &"var2".to_string());
     assert_eq!(v.get_index(), Some(&0));
+    assert_eq!(v.get_value(), Some(&23));
     assert_eq!(v.iter_inputs(), Vec::<&i32>::new());
 
     *v.get_mut_index().unwrap() = 100;
@@ -66,6 +68,7 @@ fn it_works() {
 
     assert_eq!(v.get_name(), &"var3".to_string());
     assert_eq!(v.get_index(), None);
+    assert_eq!(v.get_value(), Some(&1));
     assert_eq!(v.iter_inputs(), vec![&1, &2]);
 
     for n in v.iter_mut_inputs() {
@@ -76,5 +79,6 @@ fn it_works() {
     let v = A::Variant4(10u32, 11i32, 12i32, "var4".to_string());
     assert_eq!(v.get_name(), &"var4".to_string());
     assert_eq!(v.get_index(), Some(&10));
+    assert_eq!(v.get_value(), None);
     assert_eq!(v.iter_inputs(), vec![&11, &12]);
 }
