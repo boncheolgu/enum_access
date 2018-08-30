@@ -21,6 +21,9 @@ macro_rules! ident {
 
 decl_derive!([EnumAccess, attributes(enum_alias, enum_ignore, enum_access)] => impl_enum_accessor);
 fn impl_enum_accessor(mut s: Structure) -> TokenStream {
+    let name = &s.ast().ident;
+    let (impl_generics, ty_generics, where_clause) = s.ast().generics.split_for_impl();
+
     s.binding_name(|bi, i| bi.ident.clone().unwrap_or_else(|| ident!("binding{}", i)));
 
     let mut s_mut = s.clone();
@@ -29,7 +32,6 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
     let accessors = get_accessor_list(&s.ast().attrs);
 
     let body = accessors.iter().flat_map(|(kind, ident)| {
-        let sident = &s.ast().ident;
         let ty = ident_type(&s, ident);
 
         if kind == "get" {
@@ -41,7 +43,7 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
 
             Some(quote!{
                 #[allow(unused_variables, dead_code)]
-                impl #sident {
+                impl #impl_generics #name #ty_generics #where_clause {
                     pub fn #get (&self) -> &#ty {
                         match *self { #body }
                     }
@@ -60,7 +62,7 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
 
             Some(quote!{
                 #[allow(unused_variables, dead_code)]
-                impl #sident {
+                impl #impl_generics #name #ty_generics #where_clause {
                     pub fn #get (&self) -> Option<&#ty> {
                         match *self { #body }
                     }
@@ -79,7 +81,7 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
 
             Some(quote!{
                 #[allow(unused_variables, dead_code)]
-                impl #sident {
+                impl #impl_generics #name #ty_generics #where_clause {
                     pub fn #iter (&self) -> Vec<&#ty> {
                         match *self { #body }
                     }
