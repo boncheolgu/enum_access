@@ -2,12 +2,14 @@ extern crate quote;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate syn;
+extern crate syn_util;
 #[macro_use]
 extern crate synstructure;
 extern crate proc_macro2;
 
 use proc_macro2::{Span, TokenStream};
 use syn::{AttrStyle, Attribute, Ident, Meta, NestedMeta, Type};
+use syn_util::contains_attribute;
 use synstructure::{BindStyle, BindingInfo, Structure};
 
 macro_rules! ident {
@@ -100,15 +102,13 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
 }
 
 fn ident_of(bi: &BindingInfo, ident: &Ident) -> bool {
-    if contains_word(&bi.ast().attrs, "enum_ignore") {
+    if contains_attribute(&bi.ast().attrs, &["enum_ignore"]) {
         return false;
     }
 
-    &bi.binding == ident || {
-        get_attribute_list(&bi.ast().attrs)
-            .iter()
-            .any(|(k, v)| k == "enum_alias" && v == ident)
-    }
+    &bi.binding == ident || get_attribute_list(&bi.ast().attrs)
+        .iter()
+        .any(|(k, v)| k == "enum_alias" && v == ident)
 }
 
 fn ident_type<'a>(s: &'a Structure, ident: &Ident) -> &'a Type {
@@ -124,10 +124,8 @@ fn ident_type<'a>(s: &'a Structure, ident: &Ident) -> &'a Type {
                     } else {
                         None
                     }
-                })
-                .collect()
-        })
-        .collect();
+                }).collect()
+        }).collect();
     let mut bindings = bindings.concat();
     bindings.dedup();
     assert!(
@@ -148,7 +146,7 @@ fn impl_enum_get(s: &Structure, ident: &Ident) -> TokenStream {
             .collect();
 
         assert!(
-            bindings.len() > 0,
+            !bindings.is_empty(),
             "\'{}\' has no field named \"{}\".",
             v.ast().ident,
             ident
@@ -196,20 +194,6 @@ fn impl_enum_iter(s: &Structure, ident: &Ident) -> TokenStream {
     })
 }
 
-fn contains_word(attrs: &[Attribute], word: &str) -> bool {
-    for attr in attrs {
-        if attr.style == AttrStyle::Outer {
-            if let Some(meta) = attr.interpret_meta() {
-                match meta {
-                    Meta::Word(ref id) if id == word => return true,
-                    _ => continue,
-                }
-            }
-        }
-    }
-    return false;
-}
-
 fn get_attribute_list(attrs: &[Attribute]) -> Vec<(Ident, Ident)> {
     let mut result = Vec::new();
 
@@ -219,18 +203,15 @@ fn get_attribute_list(attrs: &[Attribute]) -> Vec<(Ident, Ident)> {
         }
 
         if let Some(meta) = attr.interpret_meta() {
-            match meta {
-                Meta::List(meta_list) => {
-                    for meta in &meta_list.nested {
-                        match *meta {
-                            NestedMeta::Meta(Meta::Word(ref ident)) => {
-                                result.push((meta_list.ident.clone(), ident.clone()));
-                            }
-                            _ => continue,
+            if let Meta::List(meta_list) = meta {
+                for meta in &meta_list.nested {
+                    match *meta {
+                        NestedMeta::Meta(Meta::Word(ref ident)) => {
+                            result.push((meta_list.ident.clone(), ident.clone()));
                         }
+                        _ => continue,
                     }
                 }
-                _ => {}
             }
         }
     }
@@ -251,25 +232,22 @@ fn get_accessor_list(attrs: &[Attribute]) -> Vec<(Ident, Ident)> {
                 continue;
             }
 
-            match meta {
-                Meta::List(meta_list) => {
-                    for meta in &meta_list.nested {
-                        match meta {
-                            NestedMeta::Meta(Meta::List(meta_list)) => {
-                                for meta in &meta_list.nested {
-                                    match *meta {
-                                        NestedMeta::Meta(Meta::Word(ref ident)) => {
-                                            result.push((meta_list.ident.clone(), ident.clone()));
-                                        }
-                                        _ => continue,
+            if let Meta::List(meta_list) = meta {
+                for meta in &meta_list.nested {
+                    match meta {
+                        NestedMeta::Meta(Meta::List(meta_list)) => {
+                            for meta in &meta_list.nested {
+                                match *meta {
+                                    NestedMeta::Meta(Meta::Word(ref ident)) => {
+                                        result.push((meta_list.ident.clone(), ident.clone()));
                                     }
+                                    _ => continue,
                                 }
                             }
-                            _ => continue,
                         }
+                        _ => continue,
                     }
                 }
-                _ => {}
             }
         }
     }
