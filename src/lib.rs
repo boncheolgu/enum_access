@@ -44,7 +44,7 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
             let get_mut = ident!("get_mut_{}", ident);
 
             Some(quote!{
-                #[allow(unused_variables, dead_code)]
+                #[allow(unused_variables, dead_code, missing_docs)]
                 impl #impl_generics #name #ty_generics #where_clause {
                     pub fn #get (&self) -> &#ty {
                         match *self { #body }
@@ -63,7 +63,7 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
             let get_mut = ident!("get_mut_{}", ident);
 
             Some(quote!{
-                #[allow(unused_variables, dead_code)]
+                #[allow(unused_variables, dead_code, missing_docs)]
                 impl #impl_generics #name #ty_generics #where_clause {
                     pub fn #get (&self) -> Option<&#ty> {
                         match *self { #body }
@@ -82,7 +82,7 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
             let iter_mut = ident!("iter_mut_{}s", ident);
 
             Some(quote!{
-                #[allow(unused_variables, dead_code)]
+                #[allow(unused_variables, dead_code, missing_docs)]
                 impl #impl_generics #name #ty_generics #where_clause {
                     pub fn #iter (&self) -> Vec<&#ty> {
                         match *self { #body }
