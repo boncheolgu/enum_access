@@ -44,13 +44,13 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
             let get_mut = ident!("get_mut_{}", ident);
 
             Some(quote!{
-                #[allow(unused_variables, dead_code, missing_docs)]
+                #[allow(unused_variables, dead_code)]
                 impl #impl_generics #name #ty_generics #where_clause {
-                    pub fn #get (&self) -> &#ty {
+                    fn #get (&self) -> &#ty {
                         match *self { #body }
                     }
 
-                    pub fn #get_mut (&mut self) -> &mut #ty {
+                    fn #get_mut (&mut self) -> &mut #ty {
                         match *self { #body_mut }
                     }
                 }
@@ -63,13 +63,13 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
             let get_mut = ident!("get_mut_{}", ident);
 
             Some(quote!{
-                #[allow(unused_variables, dead_code, missing_docs)]
+                #[allow(unused_variables, dead_code)]
                 impl #impl_generics #name #ty_generics #where_clause {
-                    pub fn #get (&self) -> Option<&#ty> {
+                    fn #get (&self) -> Option<&#ty> {
                         match *self { #body }
                     }
 
-                    pub fn #get_mut (&mut self) -> Option<&mut #ty> {
+                    fn #get_mut (&mut self) -> Option<&mut #ty> {
                         match *self { #body_mut }
                     }
                 }
@@ -82,13 +82,13 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
             let iter_mut = ident!("iter_mut_{}s", ident);
 
             Some(quote!{
-                #[allow(unused_variables, dead_code, missing_docs)]
+                #[allow(unused_variables, dead_code)]
                 impl #impl_generics #name #ty_generics #where_clause {
-                    pub fn #iter (&self) -> Vec<&#ty> {
+                    fn #iter (&self) -> Vec<&#ty> {
                         match *self { #body }
                     }
 
-                    pub fn #iter_mut (&mut self) -> Vec<&mut #ty> {
+                    fn #iter_mut (&mut self) -> Vec<&mut #ty> {
                         match *self { #body_mut }
                     }
                 }

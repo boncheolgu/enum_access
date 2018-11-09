@@ -1,6 +1,6 @@
 [package]
 name = "enum_access"
-version = "0.1.4"
+version = "0.2.0"
 authors = ["Boncheol Gu <boncheol.gu@gmail.com>"]
 
 description = "Custom derive for automatically generating the accessor methods for Enums"
