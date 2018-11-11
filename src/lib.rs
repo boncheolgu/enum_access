@@ -8,7 +8,7 @@ extern crate synstructure;
 extern crate proc_macro2;
 
 use proc_macro2::{Span, TokenStream};
-use syn::{AttrStyle, Attribute, Ident, Meta, NestedMeta, Type};
+use syn::{AttrStyle, Attribute, Ident, Lit, Meta, NestedMeta, Type};
 use syn_util::contains_attribute;
 use synstructure::{BindStyle, BindingInfo, Structure};
 
@@ -22,6 +22,8 @@ macro_rules! ident {
 }
 
 decl_derive!([EnumAccess, attributes(enum_alias, enum_ignore, enum_access)] => impl_enum_accessor);
+decl_derive!([EnumDisplay, attributes(enum_display)] => impl_enum_display);
+
 fn impl_enum_accessor(mut s: Structure) -> TokenStream {
     let name = &s.ast().ident;
     let (impl_generics, ty_generics, where_clause) = s.ast().generics.split_for_impl();
@@ -99,6 +101,49 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
     });
 
     quote!( #(#body)* )
+}
+
+fn impl_enum_display(mut s: Structure) -> TokenStream {
+    s.binding_name(|bi, i| bi.ident.clone().unwrap_or_else(|| ident!("binding{}", i)));
+
+    let body = s.each_variant(|v| {
+        for attr in v.ast().attrs {
+            if attr.style == AttrStyle::Outer {
+                if let Some(meta) = attr.interpret_meta() {
+                    if meta.name() == "enum_display" {
+                        if let Meta::List(meta_list) = meta {
+                            let meta_list: Vec<_> = meta_list
+                                .nested
+                                .iter()
+                                .map(|x| {
+                                    if let NestedMeta::Literal(Lit::Int(lit_int)) = x {
+                                        let bi = ident!("binding{}", lit_int.value());
+                                        quote!(#bi)
+                                    } else {
+                                        quote!(#x)
+                                    }
+                                }).collect();
+                            return quote!(write!(f, #(#meta_list),*));
+                        }
+                    }
+                }
+            }
+        }
+
+        quote!(write!(f, ""))
+    });
+
+    s.gen_impl(quote! {
+        use std::fmt::{Display, Error, Formatter};
+        use std::result::Result;
+
+        gen impl Display for @Self {
+            #[allow(unused_variables)]
+            fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+                match *self { #body }
+            }
+        }
+    })
 }
 
 fn ident_of(bi: &BindingInfo, ident: &Ident) -> bool {
@@ -277,5 +322,42 @@ mod test {
                 (ident!("iter"), ident!("input")),
             ]
         );
+
+        test_derive! {
+            impl_enum_display {
+                enum A<T> {
+                    #[enum_display("B: {}, {}", 0, 1)]
+                    B(i32, T),
+                    C(i32),
+                    #[enum_display("D: {}, {}", value, key)]
+                    D{key: i32, value: i32}
+                }
+            }
+            expands to {
+                #[allow(non_upper_case_globals)]
+                const _DERIVE_Display_FOR_A: () = {
+                    use std::fmt::{Display, Error, Formatter};
+                    use std::result::Result;
+
+                    impl<T> Display for A<T> where T : Display {
+                        #[allow(unused_variables)]
+                        fn fmt(&self, f: & mut Formatter) -> Result<(), Error> {
+                            match *self {
+                                A::B(ref binding0, ref binding1,) => {
+                                    write!(f, "B: {}, {}", binding0, binding1)
+                                }
+                                A::C(ref binding0,) => {
+                                    write!(f, "")
+                                }
+                                A::D{key: ref key, value: ref value,} => {
+                                    write!(f, "D: {}, {}", value, key)
+                                }
+                            }
+                        }
+                    }
+                };
+            }
+            no_build
+        }
     }
 }

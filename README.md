@@ -8,13 +8,11 @@ Custom derive for automatically generating the accessor methods for Enums.
 #[macro_use]
 extern crate enum_access;
 
-#[derive(EnumAccess)]
+#[derive(EnumAccess, EnumDisplay)]
 #[enum_access(get(name), get_some(index, value), iter(input))]
-enum A {
-    Variant1 {
-        name: String,
-        input: i32,
-    },
+enum A<T> {
+    #[enum_display("Variant1 name:{}, input:{}", input, gen)]
+    Variant1 { name: String, input: i32, gen: T },
     Variant2 {
         index: u32,
         name: String,
@@ -29,6 +27,7 @@ enum A {
         #[enum_ignore]
         input: i32,
     },
+    #[enum_display("Variant4 index:{}, name:{}", 0, 3)]
     Variant4(
         #[enum_alias(index)] u32,
         #[enum_alias(input)] i32,
@@ -39,9 +38,10 @@ enum A {
 
 #[test]
 fn it_works() {
-    let mut v = A::Variant1 {
+    let mut v: A<u32> = A::Variant1 {
         name: "var1".to_string(),
         input: 9,
+        gen: 0,
     };
 
     assert_eq!(v.get_name(), &"var1".to_string());
@@ -49,10 +49,12 @@ fn it_works() {
     assert_eq!(v.get_value(), None);
     assert_eq!(v.iter_inputs(), vec![&9]);
 
+    assert_eq!(v.to_string(), "Variant1 name:9, input:0");
+
     *v.get_mut_name() = "var1'".to_string();
     assert_eq!(v.get_name(), &"var1'".to_string());
 
-    let mut v = A::Variant2 {
+    let mut v: A<u32> = A::Variant2 {
         index: 0,
         name: "var2".to_string(),
         value: 23,
@@ -63,10 +65,12 @@ fn it_works() {
     assert_eq!(v.get_value(), Some(&23));
     assert_eq!(v.iter_inputs(), Vec::<&i32>::new());
 
+    assert_eq!(v.to_string(), "");
+
     *v.get_mut_index().unwrap() = 100;
     assert_eq!(v.get_index(), Some(&100));
 
-    let mut v = A::Variant3 {
+    let mut v: A<u32> = A::Variant3 {
         name: "var3".to_string(),
         lhs: 1,
         rhs: 2,
@@ -83,10 +87,12 @@ fn it_works() {
     }
     assert_eq!(v.iter_inputs(), vec![&11, &12]);
 
-    let v = A::Variant4(10u32, 11i32, 12i32, "var4".to_string());
+    let v: A<u32> = A::Variant4(10u32, 11i32, 12i32, "var4".to_string());
     assert_eq!(v.get_name(), &"var4".to_string());
     assert_eq!(v.get_index(), Some(&10));
     assert_eq!(v.get_value(), None);
     assert_eq!(v.iter_inputs(), vec![&11, &12]);
+
+    assert_eq!(v.to_string(), "Variant4 index:10, name:var4");
 }
 ```
