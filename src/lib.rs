@@ -40,10 +40,10 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
 
         if kind == "get" {
             let body = impl_enum_get(&s, ident);
-            let get = ident!("get_{}", ident);
+            let get = ident;
 
             let body_mut = impl_enum_get(&s_mut, ident);
-            let get_mut = ident!("get_mut_{}", ident);
+            let get_mut = ident!("{}_mut", ident);
 
             Some(quote!{
                 #[allow(unused_variables, dead_code)]
@@ -59,10 +59,10 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
             })
         } else if kind == "get_some" {
             let body = impl_enum_get_some(&s, ident);
-            let get = ident!("get_{}", ident);
+            let get = ident;
 
             let body_mut = impl_enum_get_some(&s_mut, ident);
-            let get_mut = ident!("get_mut_{}", ident);
+            let get_mut = ident!("{}_mut", ident);
 
             Some(quote!{
                 #[allow(unused_variables, dead_code)]
@@ -78,10 +78,10 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
             })
         } else if kind == "iter" {
             let body = impl_enum_iter(&s, ident);
-            let iter = ident!("iter_{}s", ident);
+            let iter = ident;
 
             let body_mut = impl_enum_iter(&s_mut, ident);
-            let iter_mut = ident!("iter_mut_{}s", ident);
+            let iter_mut = ident!("{}_mut", ident);
 
             Some(quote!{
                 #[allow(unused_variables, dead_code)]
@@ -122,7 +122,8 @@ fn impl_enum_display(mut s: Structure) -> TokenStream {
                                     } else {
                                         quote!(#x)
                                     }
-                                }).collect();
+                                })
+                                .collect();
                             return quote!(write!(f, #(#meta_list),*));
                         }
                     }
@@ -169,8 +170,10 @@ fn ident_type<'a>(s: &'a Structure, ident: &Ident) -> &'a Type {
                     } else {
                         None
                     }
-                }).collect()
-        }).collect();
+                })
+                .collect()
+        })
+        .collect();
     let mut bindings = bindings.concat();
     bindings.dedup();
     assert!(
