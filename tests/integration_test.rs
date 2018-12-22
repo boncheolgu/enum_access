@@ -1,9 +1,9 @@
 #[macro_use]
 extern crate enum_access;
 
-#[derive(EnumAccess, EnumDisplay)]
+#[derive(Clone, PartialEq, Debug, EnumAccess, EnumDisplay)]
 #[enum_access(get(name), get_some(index, value), iter(inputs))]
-enum A<T> {
+enum Enum<T> {
     #[enum_display("Variant1 name:{}, input:{}", input, gen)]
     Variant1 {
         name: String,
@@ -11,11 +11,13 @@ enum A<T> {
         input: i32,
         gen: T,
     },
+    #[enum_inner_struct]
     Variant2 {
         index: u32,
         name: String,
         value: i32,
     },
+    #[enum_inner_struct]
     Variant3 {
         name: String,
         #[enum_alias(inputs, value)]
@@ -36,7 +38,7 @@ enum A<T> {
 
 #[test]
 fn it_works() {
-    let mut v: A<u32> = A::Variant1 {
+    let mut v: Enum<u32> = Enum::Variant1 {
         name: "var1".to_string(),
         input: 9,
         gen: 0,
@@ -52,11 +54,14 @@ fn it_works() {
     *v.name_mut() = "var1'".to_string();
     assert_eq!(v.name(), &"var1'".to_string());
 
-    let mut v: A<u32> = A::Variant2 {
+    let mut v: Enum<u32> = Enum::Variant2 {
         index: 0,
         name: "var2".to_string(),
         value: 23,
     };
+
+    let variant2: EnumVariant2Inner = v.clone().into();
+    assert_eq!(v, Enum::from(variant2));
 
     assert_eq!(v.name(), &"var2".to_string());
     assert_eq!(v.index(), Some(&0));
@@ -68,12 +73,15 @@ fn it_works() {
     *v.index_mut().unwrap() = 100;
     assert_eq!(v.index(), Some(&100));
 
-    let mut v: A<u32> = A::Variant3 {
+    let mut v: Enum<u32> = Enum::Variant3 {
         name: "var3".to_string(),
         lhs: 1,
         rhs: 2,
         input: 3,
     };
+
+    let variant3: EnumVariant3Inner = v.clone().into();
+    assert_eq!(v, Enum::from(variant3));
 
     assert_eq!(v.name(), &"var3".to_string());
     assert_eq!(v.index(), None);
@@ -85,7 +93,7 @@ fn it_works() {
     }
     assert_eq!(v.inputs(), vec![&11, &12]);
 
-    let v: A<u32> = A::Variant4(10u32, 11i32, 12i32, "var4".to_string());
+    let v: Enum<u32> = Enum::Variant4(10u32, 11i32, 12i32, "var4".to_string());
     assert_eq!(v.name(), &"var4".to_string());
     assert_eq!(v.index(), Some(&10));
     assert_eq!(v.value(), None);

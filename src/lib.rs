@@ -1,3 +1,5 @@
+#![recursion_limit = "128"]
+
 extern crate quote;
 #[allow(unused_imports)]
 #[macro_use]
@@ -8,7 +10,10 @@ extern crate synstructure;
 extern crate proc_macro2;
 
 use proc_macro2::{Span, TokenStream};
-use syn::{AttrStyle, Attribute, Ident, Lit, Meta, NestedMeta, Type};
+use syn::{
+    AttrStyle, Attribute, Field, Fields, GenericParam, Ident, Lifetime, Lit, Meta, NestedMeta,
+    Type, TypeParam, VisPublic, Visibility,
+};
 use syn_util::contains_attribute;
 use synstructure::{BindStyle, BindingInfo, Structure};
 
@@ -21,7 +26,7 @@ macro_rules! ident {
     };
 }
 
-decl_derive!([EnumAccess, attributes(enum_alias, enum_ignore, enum_access)] => impl_enum_accessor);
+decl_derive!([EnumAccess, attributes(enum_alias, enum_ignore, enum_access, enum_inner_struct)] => impl_enum_accessor);
 decl_derive!([EnumDisplay, attributes(enum_display)] => impl_enum_display);
 
 fn impl_enum_accessor(mut s: Structure) -> TokenStream {
@@ -33,9 +38,11 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
     let mut s_mut = s.clone();
     s_mut.bind_with(|_| BindStyle::RefMut);
 
+    let inner_body = impl_enum_inner_struct(&s);
+
     let accessors = get_accessor_list(&s.ast().attrs);
 
-    let body = accessors.iter().flat_map(|(kind, ident)| {
+    let accessor_body = accessors.iter().flat_map(|(kind, ident)| {
         let ty = ident_type(&s, ident);
 
         if kind == "get" {
@@ -45,7 +52,7 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
             let body_mut = impl_enum_get(&s_mut, ident);
             let get_mut = ident!("{}_mut", ident);
 
-            Some(quote!{
+            Some(quote! {
                 #[allow(unused_variables, dead_code)]
                 impl #impl_generics #name #ty_generics #where_clause {
                     fn #get (&self) -> &#ty {
@@ -64,7 +71,7 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
             let body_mut = impl_enum_get_some(&s_mut, ident);
             let get_mut = ident!("{}_mut", ident);
 
-            Some(quote!{
+            Some(quote! {
                 #[allow(unused_variables, dead_code)]
                 impl #impl_generics #name #ty_generics #where_clause {
                     fn #get (&self) -> Option<&#ty> {
@@ -83,7 +90,7 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
             let body_mut = impl_enum_iter(&s_mut, ident);
             let iter_mut = ident!("{}_mut", ident);
 
-            Some(quote!{
+            Some(quote! {
                 #[allow(unused_variables, dead_code)]
                 impl #impl_generics #name #ty_generics #where_clause {
                     fn #iter (&self) -> Vec<&#ty> {
@@ -100,7 +107,7 @@ fn impl_enum_accessor(mut s: Structure) -> TokenStream {
         }
     });
 
-    quote!( #(#body)* )
+    quote!( #(#accessor_body)* #inner_body )
 }
 
 fn impl_enum_display(mut s: Structure) -> TokenStream {
@@ -152,9 +159,10 @@ fn ident_of(bi: &BindingInfo, ident: &Ident) -> bool {
         return false;
     }
 
-    &bi.binding == ident || get_attribute_list(&bi.ast().attrs)
-        .iter()
-        .any(|(k, v)| k == "enum_alias" && v == ident)
+    &bi.binding == ident
+        || get_attribute_list(&bi.ast().attrs)
+            .iter()
+            .any(|(k, v)| k == "enum_alias" && v == ident)
 }
 
 fn ident_type<'a>(s: &'a Structure, ident: &Ident) -> &'a Type {
@@ -201,7 +209,7 @@ fn impl_enum_get(s: &Structure, ident: &Ident) -> TokenStream {
         );
 
         let bi = &bindings[0];
-        quote!{ #bi }
+        quote! { #bi }
     })
 }
 
@@ -214,10 +222,10 @@ fn impl_enum_get_some(s: &Structure, ident: &Ident) -> TokenStream {
             .collect();
 
         match bindings.len() {
-            0 => quote!{ None },
+            0 => quote! { None },
             1 => {
                 let bi = &bindings[0];
-                quote!{ Some(#bi) }
+                quote! { Some(#bi) }
             }
             _ => {
                 panic!(
@@ -238,7 +246,7 @@ fn impl_enum_iter(s: &Structure, ident: &Ident) -> TokenStream {
             .filter(|bi| ident_of(bi, ident))
             .collect();
 
-        quote!{ vec![#(#bindings,)*] }
+        quote! { vec![#(#bindings,)*] }
     })
 }
 
@@ -303,6 +311,148 @@ fn get_accessor_list(attrs: &[Attribute]) -> Vec<(Ident, Ident)> {
     result
 }
 
+fn contains_type_generics(ty: &Type, type_param: &TypeParam) -> bool {
+    match ty {
+        Type::Slice(type_slice) => contains_type_generics(&*type_slice.elem, type_param),
+        Type::Array(type_array) => contains_type_generics(&*type_array.elem, type_param),
+        Type::Ptr(type_ptr) => contains_type_generics(&*type_ptr.elem, type_param),
+        Type::Reference(type_reference) => {
+            contains_type_generics(&*type_reference.elem, type_param)
+        }
+        Type::Tuple(type_tuple) => type_tuple
+            .elems
+            .iter()
+            .any(|ty| contains_type_generics(ty, type_param)),
+        Type::Path(type_path) => {
+            let type_ident = &type_param.ident;
+            quote!(#type_path).to_string() == quote!(#type_ident).to_string()
+        }
+        _ => false,
+    }
+}
+
+fn contains_lifetime_generics(ty: &Type, lifetime: &Lifetime) -> bool {
+    match ty {
+        Type::Slice(type_slice) => contains_lifetime_generics(&*type_slice.elem, lifetime),
+        Type::Array(type_array) => contains_lifetime_generics(&*type_array.elem, lifetime),
+        Type::Tuple(type_tuple) => type_tuple
+            .elems
+            .iter()
+            .any(|ty| contains_lifetime_generics(ty, lifetime)),
+        Type::Reference(type_reference) => type_reference.lifetime.as_ref() == Some(lifetime),
+        _ => false,
+    }
+}
+
+fn impl_enum_inner_struct(s: &Structure) -> TokenStream {
+    let inners = s
+        .variants()
+        .iter()
+        .filter(|v| contains_attribute(v.ast().attrs, &["enum_inner_struct"]))
+        .map(|v| {
+            let name = &s.ast().ident;
+            let variant_name = &v.ast().ident;
+            let inner_name = ident!("{}{}Inner", name, variant_name);
+            let mut fields = v.ast().fields.clone();
+
+            fn clear_field(field: &mut Field) {
+                field.vis = Visibility::Public(
+                    VisPublic {
+                        pub_token: Token!(pub)(Span::call_site())
+                    }
+                );
+                field.attrs.clear();
+            }
+
+            match &mut fields {
+                Fields::Named(fields_named) => fields_named.named.iter_mut().for_each(|field| {
+                    clear_field(field);
+                }),
+                Fields::Unnamed(fields_unnamed) => fields_unnamed.unnamed.iter_mut().for_each(|field| {
+                    clear_field(field);
+                }),
+                _ => {}
+            }
+
+            let bindings = v.bindings();
+
+            let (impl_generics, ty_generics, where_clause) = s.ast().generics.split_for_impl();
+            let inner_generics: Vec<_> = s.ast().generics.params.iter().filter(|param| {
+                bindings.iter().any(|bi| {
+                    match param {
+                        GenericParam::Type(type_param) => {
+                            contains_type_generics(&bi.ast().ty, type_param)
+                        }
+                        GenericParam::Lifetime(lifetime_def) => {
+                            contains_lifetime_generics(&bi.ast().ty, &lifetime_def.lifetime)
+                        }
+                        _ => false,
+                    }
+                })
+            }).collect();
+
+            let inner_ty_generics: Vec<_> = inner_generics.iter().filter_map(|param| {
+                match param {
+                    GenericParam::Type(type_param) => {
+                        let type_ident = &type_param.ident;
+                        Some(quote!(#type_ident))
+                    },
+                    GenericParam::Lifetime(lifetime_def) => {
+                        let lifetime = &lifetime_def.lifetime;
+                        Some(quote!(#lifetime))
+                    },
+                    _ => None,
+                }
+            }).collect();
+            let inner_ty_generics = quote!( < #(#inner_ty_generics),* > );
+
+            let inner_impl_generics = quote!( < #(#inner_generics),* > );
+
+            if let Fields::Named(_) = v.ast().fields {
+                quote! {
+                    pub struct #inner_name #inner_impl_generics #where_clause #fields
+
+                    impl #impl_generics From<#name #ty_generics> for #inner_name #inner_ty_generics #where_clause {
+                        fn from(x: #name #ty_generics) -> Self {
+                            match x {
+                                #name::#variant_name{#(#bindings),*} => #inner_name{#(#bindings),*},
+                                _ => panic!("cannot converted to {}.", stringify!(#inner_name)),
+                            }
+                        }
+                    }
+
+                    impl #impl_generics From<#inner_name #inner_ty_generics> for #name #ty_generics #where_clause {
+                        fn from(x: #inner_name #inner_ty_generics) -> Self {
+                            let #inner_name{#(#bindings),*} = x;
+                            #name :: #variant_name {#(#bindings),*}
+                        }
+                    }
+                }
+            } else {
+                quote! {
+                    pub struct #inner_name #inner_impl_generics #where_clause #fields ;
+
+                    impl #impl_generics From<#name #ty_generics> for #inner_name #inner_ty_generics #where_clause {
+                        fn from(x: #name #ty_generics) -> Self {
+                            match x {
+                                #name::#variant_name(#(#bindings),*) => #inner_name(#(#bindings),*),
+                                _ => panic!("cannot converted to {}.", stringify!(#inner_name)),
+                            }
+                        }
+                    }
+
+                    impl #impl_generics From<#inner_name #inner_ty_generics> for #name #ty_generics #where_clause {
+                        fn from(x: #inner_name #inner_ty_generics) -> Self {
+                            let #inner_name(#(#bindings),*) = x;
+                            #name :: #variant_name (#(#bindings),*)
+                        }
+                    }
+                }
+            }
+        });
+    quote!(#(#inners)*)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -310,8 +460,8 @@ mod test {
     use syn::DeriveInput;
 
     #[test]
-    fn it_works() {
-        let s: DeriveInput = parse_quote!{
+    fn unittest_enum_access() {
+        let s: DeriveInput = parse_quote! {
             #[enum_access(get(name, address), get_some(index), iter(input))]
             enum A {
             }
@@ -359,6 +509,69 @@ mod test {
                         }
                     }
                 };
+            }
+            no_build
+        }
+
+        test_derive! {
+            impl_enum_accessor {
+                enum Enum<'a, T: Clone> {
+                    #[enum_inner_struct]
+                    Variant1(i32, T),
+                    #[enum_inner_struct]
+                    Variant2{key: &'a i32, value: i32},
+                    #[enum_inner_struct]
+                    Variant3(&'a T),
+                }
+            }
+            expands to {
+                pub struct EnumVariant1Inner<T: Clone> ( pub i32, pub T );
+                impl<'a, T: Clone> From<Enum<'a, T> > for EnumVariant1Inner<T> {
+                    fn from(x: Enum<'a, T>) -> Self {
+                        match x {
+                            Enum::Variant1(binding0, binding1) => EnumVariant1Inner(binding0, binding1),
+                            _ => panic!("cannot converted to {}.", stringify!(EnumVariant1Inner)),
+                        }
+                    }
+                }
+                impl<'a, T: Clone> From<EnumVariant1Inner<T> > for Enum<'a, T> {
+                    fn from(x: EnumVariant1Inner<T>) -> Self {
+                        let EnumVariant1Inner(binding0, binding1) = x;
+                        Enum::Variant1(binding0, binding1)
+                    }
+                }
+
+                pub struct EnumVariant2Inner<'a> { pub key: &'a i32, pub value: i32 }
+                impl<'a, T: Clone> From<Enum<'a, T> > for EnumVariant2Inner<'a> {
+                    fn from(x: Enum<'a, T>) -> Self {
+                        match x {
+                            Enum::Variant2 { key, value } => EnumVariant2Inner { key, value },
+                            _ => panic!("cannot converted to {}.", stringify!(EnumVariant2Inner)),
+                        }
+                    }
+                }
+                impl<'a, T: Clone> From<EnumVariant2Inner<'a> > for Enum<'a, T> {
+                    fn from(x: EnumVariant2Inner<'a>) -> Self {
+                        let EnumVariant2Inner { key, value } = x;
+                        Enum::Variant2 { key, value }
+                    }
+                }
+
+                pub struct EnumVariant3Inner<'a, T: Clone> ( pub &'a T );
+                impl<'a, T: Clone> From<Enum<'a, T> > for EnumVariant3Inner<'a, T> {
+                    fn from(x: Enum<'a, T>) -> Self {
+                        match x {
+                            Enum::Variant3(binding0) => EnumVariant3Inner(binding0),
+                            _ => panic!("cannot converted to {}.", stringify!(EnumVariant3Inner)),
+                        }
+                    }
+                }
+                impl<'a, T: Clone> From<EnumVariant3Inner<'a, T> > for Enum<'a, T> {
+                    fn from(x: EnumVariant3Inner<'a, T>) -> Self {
+                        let EnumVariant3Inner(binding0) = x;
+                        Enum::Variant3(binding0)
+                    }
+                }
             }
             no_build
         }
